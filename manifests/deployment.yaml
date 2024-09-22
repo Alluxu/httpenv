@@ -16,11 +16,11 @@ spec:
     spec:
       containers:
         - name: myapp-container
-          image: ${TESTING_IMAGE}  # Replaced by your GitHub Action step
+          image: ${TESTING_IMAGE}  # Replaced by your GitHub Action step with the image from ghcr.io
           ports:
-            - containerPort: 8888  # Should match the port your app listens on
+            - containerPort: 8888  # Make sure this matches your application's exposed port
           env:
-            - name: ENV_VAR_EXAMPLE  # Example of environment variable
+            - name: ENV_VAR_EXAMPLE  # Example of environment variable (you can customize it)
               value: "value"
       imagePullSecrets:
-        - name: regcred  # Secret created in your Action to pull the image
+        - name: regcred  # Ensure the secret is created to pull from ghcr.io
