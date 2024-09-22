@@ -2,13 +2,11 @@
 FROM golang:alpine AS build
 WORKDIR /app
 COPY httpenv.go /app
-COPY go.mod /app  # Ensure that you copy go.mod if it exists
-RUN go mod tidy    # This command downloads the dependencies
 RUN go build -o /app/httpenv httpenv.go
 
 # Second stage: test
 FROM build AS test
-COPY . /app        # Copy the entire project for testing
+COPY . /app
 RUN go test ./...
 
 # Final stage: production image
