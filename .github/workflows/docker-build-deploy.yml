@@ -27,7 +27,7 @@ jobs:
         id: docker_meta
         uses: docker/metadata-action@v3
         with:
-          images: alvargran/httpenv
+          images: ghcr.io/alluxu/httpenv
           flavor:
             latest=false
           tags: |
@@ -87,7 +87,7 @@ jobs:
             --docker-server=https://ghcr.io \
             --docker-username=${{ github.actor }} \
             --docker-password=${{ secrets.GH_TOKEN }}
-          export TESTING_IMAGE=ghcr.io/Alluxu/httpenv:"$GITHUB_RUN_ID"
+          export TESTING_IMAGE=ghcr.io/alluxu/httpenv:${{ github.run_id }}
           envsubst < manifests/deployment.yaml | kubectl apply -f -
 
           # Retry loop for checking pod readiness
@@ -112,7 +112,7 @@ jobs:
           push: false
           load: true
           tags: |
-            alvargran/httpenv:${{ github.run_id }}
+            ghcr.io/alluxu/httpenv:${{ github.run_id }}
           labels: ${{ steps.docker_meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -121,14 +121,14 @@ jobs:
       # Unit tests in Docker Compose
       - name: Unit testing in docker
         run: |
-          export TESTING_IMAGE="Alluxu/httpenv:${{ github.run_id }}"
+          export TESTING_IMAGE="ghcr.io/alluxu/httpenv:${{ github.run_id }}"
           docker compose -f .github/workflows/docker-compose.test.yml up --exit-code-from sut
 
       # Trivy scan for all CVEs (non-blocking)
       - name: Run Trivy for all CVEs (non-blocking)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: Alluxu/httpenv:${{ github.run_id }}
+          image-ref: ghcr.io/alluxu/httpenv:${{ github.run_id }}
           exit-code: 0
           format: table
 
@@ -136,7 +136,7 @@ jobs:
       - name: Run Trivy for HIGH, CRITICAL CVEs and report (blocking)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: Alluxu/httpenv:${{ github.run_id }}
+          image-ref: ghcr.io/alluxu/httpenv:${{ github.run_id }}
           exit-code: 1
           ignore-unfixed: true
           vuln-type: 'os,library'
