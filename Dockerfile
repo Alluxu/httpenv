@@ -4,6 +4,11 @@ WORKDIR /app
 COPY httpenv.go /app
 RUN go build -o /app/httpenv httpenv.go
 
+# Second stage: test
+FROM build AS test
+COPY . /app
+RUN go test ./...
+
 # Final stage: production image
 FROM alpine
 RUN addgroup -g 1000 httpenv \
