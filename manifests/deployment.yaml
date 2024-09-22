@@ -18,9 +18,12 @@ spec:
         - name: myapp-container
           image: ${TESTING_IMAGE}  # Replaced by your GitHub Action step with the image from ghcr.io
           ports:
-            - containerPort: 8888  # Make sure this matches your application's exposed port
+            - containerPort: 8888  # This matches your application's exposed port
           env:
             - name: ENV_VAR_EXAMPLE  # Example of environment variable (you can customize it)
               value: "value"
+          # Ensure the command starts your app and doesn't exit.
+          command: ["/httpenv"]  # This is usually run based on CMD from the Dockerfile
+          args: [-d]  # If any arguments are needed for /httpenv, place them here
       imagePullSecrets:
         - name: regcred  # Ensure the secret is created to pull from ghcr.io
