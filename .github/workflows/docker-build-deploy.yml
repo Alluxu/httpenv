@@ -47,16 +47,21 @@ jobs:
         - name: Docker build
           uses: docker/build-push-action@v2
           with:
-            push: true
+            push: false
+            load: true
             tags: |
-              alvargran/httpenv:latest
-              alvargran/httpenv:04
+              # alvargran/httpenv:latest
+              # alvargran/httpenv:04
               alvargran/httpenv:${{ github.run_id }}
             labels: ${{ steps.docker_meta.outputs.labels }}
             cache-from: type=gha
             cache-to: type=gha,mode=max
             platforms: linux/amd64,linux/arm64,linux/arm/v7
 
+        - name: Unit testing in docker
+          run: |
+            export TESTING_IMAGE="alvargran/httpenv:${{ github.run_id }}"
+            docker compose -f docker-compose.test.yml up --exit-code-from sut
         - name: Run Trivy for all CVEs (non blocking)
           uses: aquasecurity/trivy-action@master
           with:

@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  httpenv:
+    image: "alvargran/httpenv:${{ github.run_id }}"
+    ports:
+      - "8080:80" # Exposing the port if needed for testing outside Docker network
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+  
+  postgres:
+    image: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres # Add this for completeness if needed in your app
+    volumes:
+      - ./healthchecks:/healthchecks
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"] # Simplified healthcheck using pg_isready
+      interval: 5s
+      retries: 5 # Wait up to 25 seconds for PostgreSQL to become healthy
+
+  sut:
+    image: "${TESTING_IMAGE}"
+    depends_on:
+      httpenv:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    command: |
+      sh -c "
+        echo 'Running tests...';
+        curl --fail http://httpenv:80 || exit 1;
+      "
