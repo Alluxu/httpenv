@@ -11,8 +11,13 @@ jobs:
 
     permissions:
       pull-requests: write
+      security-events: write
 
     steps:
+
+        - name: Checkout git repo
+          uses: actions/checkout@v3
+
         - name: Docker meta
           id: docker_meta
           uses: docker/metadata-action@v3
@@ -43,6 +48,7 @@ jobs:
           uses: docker/build-push-action@v2
           with:
             push: true
+            load: true
             tags: |
               alvargran/httpenv:latest
               alvargran/httpenv:04
@@ -58,6 +64,23 @@ jobs:
             image-ref: alvargran/httpenv:${{ github.run_id }}
             exit-code: 0
             format: table
+
+        - name: Run Trivy for HIGH,CRITICAL CVEs and report (blocking)
+          uses: aquasecurity/trivy-action@master
+          with:
+            image-ref: ${{ github.run_id }}
+            exit-code: 1
+            ignore-unfixed: true
+            vuln-type: 'os,library'
+            severity: 'HIGH,CRITICAL'
+            format: 'sarif'
+            output: 'trivy-results.sarif'
+      
+        - name: Upload Trivy scan results to GitHub Security tab
+          uses: github/codeql-action/upload-sarif@v3
+          if: always()
+          with:
+            sarif_file: 'trivy-results.sarif'
 
         - name: Find Comment for image tags
           uses: peter-evans/find-comment@v1
