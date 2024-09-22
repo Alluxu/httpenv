@@ -24,6 +24,6 @@ spec:
               value: "value"
           # Ensure the command starts your app and doesn't exit.
           command: ["/httpenv"]  # This is usually run based on CMD from the Dockerfile
-          args: [-d]  # If any arguments are needed for /httpenv, place them here
+          args: []  # If any arguments are needed for /httpenv, place them here
       imagePullSecrets:
         - name: regcred  # Ensure the secret is created to pull from ghcr.io
