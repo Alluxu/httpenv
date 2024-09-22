@@ -1,11 +1,15 @@
 # First stage: build the application
 FROM golang:alpine AS build
-COPY httpenv.go /go
+WORKDIR /app
+COPY httpenv.go /app
+COPY go.mod /app  # Ensure that you copy go.mod if it exists
+RUN go mod tidy    # This command downloads the dependencies
 RUN go build -o /app/httpenv httpenv.go
 
 # Second stage: test
 FROM build AS test
-RUN go test ./... # Add test logic here if necessary
+COPY . /app        # Copy the entire project for testing
+RUN go test ./...
 
 # Final stage: production image
 FROM alpine
