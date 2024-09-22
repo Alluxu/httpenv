@@ -2,9 +2,11 @@
 FROM golang:alpine AS build
 WORKDIR /app
 COPY httpenv.go /app
-RUN go build -o /app/httpenv httpenv.go
 
-# Verify if the binary is correctly built
+# Ensure the go binary is correctly built
+RUN go build -o httpenv httpenv.go
+
+# Verify if the binary is built correctly
 RUN ls -la /app/httpenv
 
 # Second stage: test
@@ -16,7 +18,9 @@ RUN go test ./...
 FROM alpine
 RUN addgroup -g 1000 httpenv \
     && adduser -u 1000 -G httpenv -D httpenv
-COPY --from=build --chown=httpenv:httpenv /app/httpenv /httpenv
+
+# Copy binary from build stage
+COPY --from=build /app/httpenv /httpenv
 
 # Verify if the binary is successfully copied
 RUN ls -la /httpenv
