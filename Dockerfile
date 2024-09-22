@@ -15,6 +15,6 @@ RUN addgroup -g 1000 httpenv \
     && adduser -u 1000 -G httpenv -D httpenv
 COPY --from=build --chown=httpenv:httpenv /app/httpenv /httpenv
 
-LABEL org.opencontainers.image.source=https://github.com/alvargran/your-repo-name
+LABEL org.opencontainers.image.source=https://github.com/alvargran/httpenv
 EXPOSE 8888
 CMD ["/httpenv"]
