@@ -7,6 +7,11 @@ RUN go build -o /app/httpenv httpenv.go
 # Verify if the binary is correctly built
 RUN ls -la /app/httpenv
 
+# Second stage: test
+FROM build AS test
+COPY . /app
+RUN go test ./...
+
 # Final stage: production image
 FROM alpine
 RUN addgroup -g 1000 httpenv \
