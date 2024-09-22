@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+  labels:
+    app: myapp
+spec:
+  replicas: 1  # Number of pods to run
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+        - name: myapp-container
+          image: ${TESTING_IMAGE}  # Replaced by your GitHub Action step
+          ports:
+            - containerPort: 8888  # Should match the port your app listens on
+          env:
+            - name: ENV_VAR_EXAMPLE  # Example of environment variable
+              value: "value"
+      imagePullSecrets:
+        - name: regcred  # Secret created in your Action to pull the image
