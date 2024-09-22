@@ -92,6 +92,7 @@ jobs:
 
           # Retry loop for checking pod readiness
           for i in {1..10}; do
+            POD_NAME=$(kubectl get pods -l app=myapp -o jsonpath='{.items[0].metadata.name}')
             kubectl get pods
             READY=$(kubectl get pods -l app=myapp -o jsonpath='{.items[0].status.containerStatuses[0].ready}')
             if [ "$READY" == "true" ]; then
@@ -99,12 +100,21 @@ jobs:
               break
             fi
             echo "Pod is not ready yet. Retrying in 10 seconds..."
+
+            # Capture logs in case of failure
+            echo "Fetching logs from the pod..."
+            kubectl logs $POD_NAME --all-containers=true --timestamps || true
             sleep 10
           done
 
-          # Capture logs of the pod if it's in a failed state
-          echo "Fetching logs from the pod..."
-          kubectl logs $(kubectl get pods -l app=myapp -o jsonpath='{.items[0].metadata.name}')
+          # Final log capture attempt before rollout status
+          POD_NAME=$(kubectl get pods -l app=myapp -o jsonpath='{.items[0].metadata.name}')
+          echo "Fetching final logs from the pod..."
+          kubectl logs $POD_NAME --all-containers=true --timestamps || true
+
+          # Describe pod to get more info if it's in a failed state
+          echo "Describing the pod for detailed info..."
+          kubectl describe pod $POD_NAME || true
 
           kubectl rollout status deployment myapp  # Check the status of the rollout
           kubectl exec deploy/myapp -- curl --fail localhost
