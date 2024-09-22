@@ -49,7 +49,7 @@ jobs:
           with:
             push: false
             load: true
-            tags: |
+            tags:
               # alvargran/httpenv:latest
               # alvargran/httpenv:04
               alvargran/httpenv:${{ github.run_id }}
