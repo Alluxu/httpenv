@@ -116,7 +116,7 @@ jobs:
           kubectl describe pod $POD_NAME || true
 
           kubectl rollout status deployment myapp  # Check the status of the rollout
-          kubectl exec deploy/myapp -- curl --fail localhost
+          kubectl exec deploy/myapp -- curl --fail localhost:8888
 
       # Docker build (non-push, only for testing)
       - name: Docker build
