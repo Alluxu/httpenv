@@ -7,6 +7,7 @@ RUN go build -o /app/httpenv httpenv.go
 # Second stage: test
 FROM build AS test
 COPY . /app
+RUN apk add --no-cache curl
 RUN go test ./...
 
 # Final stage: production image
