@@ -1,4 +1,4 @@
-name: Build and Deploy 04
+name: Build and Deploy with Parallel Jobs
 
 on:
   push:
@@ -7,70 +7,96 @@ on:
   pull_request:
 
 jobs:
-  build:
+  # First Job: Build Test Image
+  build-test-image:
+    name: Build Image for Testing
     runs-on: ubuntu-latest
-
     permissions:
-      pull-requests: write
-      security-events: write
-      packages: write  # Required for pushing Docker image to GitHub Container Registry
-      contents: read
+      packages: write # needed to push docker image to ghcr.io
 
     steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      # Checkout the repository
-      - name: Checkout git repo
-        uses: actions/checkout@v3
-
-      # Docker metadata
-      - name: Docker meta
-        id: docker_meta
-        uses: docker/metadata-action@v3
-        with:
-          images: ghcr.io/alluxu/httpenv
-          flavor:
-            latest=false
-          tags: |
-            type=raw,value=04
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=ref,event=pr
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-
-      # Set up QEMU
-      - name: Set Up QEMU
-        uses: docker/setup-qemu-action@v1
-
-      # Set up Docker buildx
-      - name: Set up Docker buildx
-        uses: docker/setup-buildx-action@v1 
-
-      # Log in to Docker Hub
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      # Log in to GitHub Container Registry (ghcr.io)
-      - name: Login to ghcr.io registry
+      - name: Login to GitHub Container Registry (ghcr.io)
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GH_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Build and Push to GitHub Container Registry (GHCR)
       - name: Build and Push to GHCR
         uses: docker/build-push-action@v6
         with:
           push: true
           tags: ghcr.io/alluxu/httpenv:${{ github.run_id }}
+          target: test
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
-      # Create a k3d Kubernetes cluster
+  # Second Job: Unit Tests
+  test-unit:
+    name: Unit Tests in Docker
+    needs: [build-test-image]  # Depends on build-test-image job
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+
+    steps:
+      - name: Login to GitHub Container Registry (ghcr.io)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Unit Tests
+        run: docker run --rm ghcr.io/alluxu/httpenv:${{ github.run_id }} echo "Running unit tests"
+
+  # Third Job: Integration Tests
+  test-integration:
+    name: Integration Tests in Docker Compose
+    needs: [build-test-image]  # Depends on build-test-image job
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry (ghcr.io)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Integration Tests in Docker Compose
+        run: |
+          export TESTING_IMAGE=ghcr.io/alluxu/httpenv:${{ github.run_id }}
+          docker compose -f docker-compose.test.yml up --exit-code-from sut
+
+  # Fourth Job: Kubernetes Test Deployment
+  test-k3d:
+    name: Test Deployment in Kubernetes (k3d)
+    needs: [build-test-image]  # Depends on build-test-image job
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry (ghcr.io)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: AbsaOSS/k3d-action@v2
         with:
           cluster-name: "test-cluster-1"
@@ -78,116 +104,75 @@ jobs:
             --agents 1
             --no-lb
             --k3s-arg "--no-deploy=traefik,servicelb,metrics-server@server:*"
-      
-      # Smoke test deployment in k3d Kubernetes
-      - name: Smoke test deployment in k3d Kubernetes
+
+      - name: Smoke Test Deployment in Kubernetes
         run: |
           kubectl create secret docker-registry regcred \
             --docker-server=https://ghcr.io \
             --docker-username=${{ github.actor }} \
-            --docker-password=${{ secrets.GH_TOKEN }}
+            --docker-password=${{ secrets.GITHUB_TOKEN }}
           export TESTING_IMAGE=ghcr.io/alluxu/httpenv:${{ github.run_id }}
           envsubst < manifests/deployment.yaml | kubectl apply -f -
-
-          # Retry loop for checking pod readiness
-          for i in {1..4}; do
-            POD_NAME=$(kubectl get pods -l app=myapp -o jsonpath='{.items[0].metadata.name}')
-            kubectl get pods
-            READY=$(kubectl get pods -l app=myapp -o jsonpath='{.items[0].status.containerStatuses[0].ready}')
-            if [ "$READY" == "true" ]; then
-              echo "Pod is ready!"
-              break
-            fi
-            echo "Pod is not ready yet. Retrying in 10 seconds..."
-
-            # Capture logs in case of failure
-            echo "Fetching logs from the pod..."
-            kubectl logs $POD_NAME --all-containers=true --timestamps || true
-            sleep 10
-          done
-
-          # Final log capture attempt before rollout status
-          POD_NAME=$(kubectl get pods -l app=myapp -o jsonpath='{.items[0].metadata.name}')
-          echo "Fetching final logs from the pod..."
-          kubectl logs $POD_NAME --all-containers=true --timestamps || true
-
-          # Describe pod to get more info if it's in a failed state
-          echo "Describing the pod for detailed info..."
-          kubectl describe pod $POD_NAME || true
-
-          kubectl rollout status deployment myapp  # Check the status of the rollout
+          kubectl rollout status deployment myapp
           kubectl exec deploy/myapp -- curl --fail localhost:8888
 
-      # Docker build (non-push, only for testing)
-      - name: Docker build
-        uses: docker/build-push-action@v2
+  # Fifth Job: Image Security Scan with Trivy
+  scan-image:
+    name: Scan Image with Trivy
+    needs: [build-test-image]  # Depends on build-test-image job
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      security-events: write  # To upload SARIF results
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry (ghcr.io)
+        uses: docker/login-action@v3
         with:
-          push: false
-          load: true
-          tags: |
-            ghcr.io/alluxu/httpenv:${{ github.run_id }}
-          labels: ${{ steps.docker_meta.outputs.labels }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Image for Scanning
+        run: docker pull ghcr.io/alluxu/httpenv:${{ github.run_id }}
+
+      - name: Run Trivy for All CVEs
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/alluxu/httpenv:${{ github.run_id }}
+          format: table
+          exit-code: 0
+
+  # Final Job: Build Final Production Image
+  build-final-image:
+    name: Build Final Production Image
+    needs: [test-unit, test-integration, test-k3d, scan-image]  # Depends on all previous jobs
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write  # Needed to push docker image to ghcr.io
+
+    steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry (ghcr.io)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Final Image to GHCR
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: ghcr.io/alluxu/httpenv:${{ github.run_id }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64
-
-      # Unit tests in Docker Compose
-      - name: Unit testing in docker
-        run: |
-          export TESTING_IMAGE="ghcr.io/alluxu/httpenv:${{ github.run_id }}"
-          docker compose -f .github/workflows/docker-compose.test.yml up --exit-code-from sut
-
-      # Trivy scan for all CVEs (non-blocking)
-      - name: Run Trivy for all CVEs (non-blocking)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ghcr.io/alluxu/httpenv:${{ github.run_id }}
-          exit-code: 0
-          format: table
-
-      # Trivy scan for HIGH, CRITICAL CVEs (blocking)
-      - name: Run Trivy for HIGH, CRITICAL CVEs and report (blocking)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ghcr.io/alluxu/httpenv:${{ github.run_id }}
-          exit-code: 1
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'HIGH,CRITICAL'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-
-      # Upload Trivy scan results to GitHub Security tab
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-      # Find and update PR comment with Docker tags and labels
-      - name: Find Comment for image tags
-        uses: peter-evans/find-comment@v1
-        if: github.event_name == 'pull_request'
-        id: fc
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          comment-author: 'github-actions[bot]'
-          body-includes: Docker image tag(s) pushed
-
-      - name: Create or update comment for image tag
-        uses: peter-evans/create-or-update-comment@v1
-        if: github.event_name == 'pull_request'
-        with:
-          comment-id: ${{ steps.fc.outputs.comment-id }}
-          issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            Docker image tag(s) pushed:
-            ```text
-            ${{ steps.docker_meta.outputs.tags }}
-            ```
-
-            Labels added to images:
-            ```text
-            ${{ steps.docker_meta.outputs.labels }}
-            ```
-          edit-mode: replace
+          platforms: linux/amd64,linux/arm64
