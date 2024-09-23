@@ -5,7 +5,7 @@ COPY httpenv.go /app
 RUN go build -o /app/httpenv httpenv.go
 
 # Second stage: test
-FROM build AS test  # This is the "test" stage being referenced
+FROM build AS test
 COPY . /app
 RUN go test ./...
 
