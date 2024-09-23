@@ -2,9 +2,14 @@ version: "3.8"  # Ensure you have a valid version
 
 services:
   httpenv:
-    image: "${TESTING_IMAGE}"
+    image: "${TESTING_IMAGE:-ghcr.io/alluxu/httpenv:latest}"  # Dynamically uses TESTING_IMAGE or defaults to your image
     ports:
       - "8888:8888"  # Ensure correct port binding
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888"]
+      interval: 5s
+      retries: 5
+      start_period: 10s
 
   postgres:
     image: postgres
@@ -18,9 +23,11 @@ services:
       start_period: 30s
 
   sut:
-    image: "${TESTING_IMAGE}"
+    image: "${TESTING_IMAGE:-ghcr.io/alluxu/httpenv:latest}"  # Dynamically uses TESTING_IMAGE or defaults to your image
     depends_on:
+      httpenv:
+        condition: service_healthy  # Wait for httpenv to be healthy
       postgres:
-        condition: service_healthy
+        condition: service_healthy  # Wait for postgres to be healthy
     command: >
       sh -c "sleep 5 && curl --fail http://httpenv:8888 || exit 1"
